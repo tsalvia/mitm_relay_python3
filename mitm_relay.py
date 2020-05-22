@@ -9,7 +9,7 @@ import argparse
 import time
 import string
 
-from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
 from select import select
 
@@ -125,32 +125,32 @@ def main():
 				raise
 
 			if r[0] == 'udp' and cfg.listen.startswith('127.0.0'):
-				print color("[!] In UDP, it's not recommended to bind to 127.0.0.1. If you see errors, try to bind to your LAN IP address instead.", 1)
+				print(color("[!] In UDP, it's not recommended to bind to 127.0.0.1. If you see errors, try to bind to your LAN IP address instead.", 1))
 
 		except:
 			sys.exit('[!] error: Invalid relay specification, see help.')
 
 	if not (cfg.cert and cfg.key):
-		print color("[!] Server cert/key not provided, SSL/TLS interception will not be available.", 1)
+		print(color("[!] Server cert/key not provided, SSL/TLS interception will not be available.", 1))
 
 	if not (cfg.clientcert and cfg.clientkey):
-		print color("[!] Client cert/key not provided.", 1)
+		print(color("[!] Client cert/key not provided.", 1))
 
 	# There is no point starting the local web server
 	# if we are not going to intercept the req/resp (monitor only).
 	if cfg.proxy:
 		start_ws()
 	else:
-		print color("[!] Interception disabled! %s will run in monitoring mode only." % __prog_name__, 1)
+		print(color("[!] Interception disabled! %s will run in monitoring mode only." % __prog_name__, 1))
 
 	# If a script was specified, import it
 	if cfg.script:
 		try:
-			from imp import load_source
-			cfg.script_module = load_source(cfg.script.name, cfg.script.name)
+			from importlib.machinery import SourceFileLoader
+			cfg.script_module = SourceFileLoader(cfg.script.name, cfg.script.name).load_module()
 
 		except Exception as e:
-			print color("[!] %s" % str(e))
+			print(color("[!] %s" % str(e)))
 			sys.exit()
 	# If a ssl keylog file was specified, dump (pre-)master secrets
 	if cfg.sslkeylog:
@@ -159,7 +159,7 @@ def main():
 			sslkeylog.set_keylog(cfg.sslkeylog)
 
 		except Exception as e:
-			print color("[!] %s" % str(e))
+			print(color("[!] %s" % str(e)))
 			sys.exit()
 
 
@@ -182,8 +182,8 @@ def main():
 class RequestHandler(BaseHTTPRequestHandler):
 
 	def do_GET(self):
-		content_length = self.headers.getheaders('content-length')
-		length = int(content_length[0]) if content_length else 0
+		content_length = self.headers.get('Content-Length')
+		length = int(content_length) if content_length else 0
 		body = self.rfile.read(length)
 
 		self.send_response(200)
@@ -199,7 +199,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 	do_DELETE = do_GET
 
 def start_ws():
-	print '[+] Webserver listening on', BIND_WEBSERVER
+	print('[+] Webserver listening on', BIND_WEBSERVER)
 	server = HTTPServer(BIND_WEBSERVER, RequestHandler)
 
 	try:
@@ -217,18 +217,18 @@ def data_repr(data):
 
 	def hexdump(src, length=0x10):
 		lines = []
-		for c in xrange(0, len(src), length):
+		for c in range(0, len(src), length):
 
 			lines.append("%08x:  %-*s  |%s|\n" %
 				(c, length*3,
-				' '.join('%02x' % ord(x) for x in src[c:c+length]),
-				''.join(x if 0x20 < ord(x) < 0x7f else '.' for x in src[c:c+length]))
+				' '.join('%02x' % x for x in src[c:c+length]),
+				''.join(chr(x) if 0x20 < x < 0x7f else '.' for x in src[c:c+length]))
 			)
 
 		return ''.join(lines)
 
-	if all(c in string.printable for c in data):
-		return '\n'+data
+	if all(c in string.printable for c in data.decode('utf-8', 'ignore')):
+		return '\n'+data.decode('utf-8')
 
 	else:
 		return '\n'+hexdump(data)
@@ -268,10 +268,10 @@ def do_relay_tcp(client_sock, server_sock, cfg):
 			if packet.startswith('\x16\x03'): # SSL/TLS Handshake.
 
 				if not (cfg.cert and cfg.key):
-					print color("[!] SSL/TLS handshake detected, provide a server cert and key to enable interception.", 1)
+					print(color("[!] SSL/TLS handshake detected, provide a server cert and key to enable interception.", 1))
 
 				else:
-					print color('------------------ Wrapping sockets ------------------', 2)
+					print(color('------------------ Wrapping sockets ------------------', 2))
 					client_sock = ssl.wrap_socket(client_sock, server_side=True, suppress_ragged_eofs=True, certfile=cfg.cert.name, keyfile=cfg.key.name, ssl_version=cfg_ssl_version)
 
 					# Use client-side cert/key if provided.
@@ -290,7 +290,7 @@ def do_relay_tcp(client_sock, server_sock, cfg):
 				data_out = client_sock.recv(BUFSIZE)
 
 				if not len(data_out): # client closed connection
-					print "[+] Client disconnected", client_peer
+					print("[+] Client disconnected", client_peer)
 					client_sock.close()
 					server_sock.close()
 					break
@@ -298,11 +298,11 @@ def do_relay_tcp(client_sock, server_sock, cfg):
 				data_out = proxify(data_out, cfg, client_peer, server_peer, to_server=True)
 				server_sock.send(data_out)
 
-                        if server_sock in receiving:
+			if server_sock in receiving:
 				data_in = server_sock.recv(BUFSIZE)
 
 				if not len(data_in): # server closed connection
-					print "[+] Server disconnected", server_peer
+					print("[+] Server disconnected", server_peer)
 					client_sock.close()
 					server_sock.close()
 					break
@@ -311,7 +311,7 @@ def do_relay_tcp(client_sock, server_sock, cfg):
 				client_sock.send(data_in)
 
 		except socket.error as e:
-			print color("[!] %s" % str(e))
+			print(color("[!] %s" % str(e)))
 
 def do_relay_udp(relay_sock, server, cfg):
 
@@ -347,7 +347,7 @@ def proxify(message, cfg, client_peer, server_peer, to_server=True):
 				data=message).content
 
 		except requests.exceptions.ProxyError:
-			print color("[!] error: can't connect to proxy!", 1)
+			print(color("[!] error: can't connect to proxy!", 1))
 			return message
 	"""
 	Modify traffic here
@@ -370,7 +370,7 @@ def proxify(message, cfg, client_peer, server_peer, to_server=True):
 			new_message = cfg.script_module.handle_response(message)
 
 		if new_message == None:
-			print color('[!] Error: make sure handle_request and handle_response both return a message.', 1)
+			print(color('[!] Error: make sure handle_request and handle_response both return a message.', 1))
 			new_message = message
 
 		if new_message != message:
@@ -390,11 +390,11 @@ def proxify(message, cfg, client_peer, server_peer, to_server=True):
 
 	if to_server:
 		msg_str = color(data_repr(message), 3, 1)
-		print "C >> S [ %s >> %s ] [ %s ] [ %d ] %s %s\n" % (client_str, server_str, date_str, len(message), modified_str if modified else '', msg_str)
+		print("C >> S [ %s >> %s ] [ %s ] [ %d ] %s %s\n" % (client_str, server_str, date_str, len(message), modified_str if modified else '', msg_str))
 
 	else:
 		msg_str = color(data_repr(message), 3, 0)
-		print "S >> C [ %s >> %s ] [ %s ] [ %d ] %s %s\n" % (server_str, client_str, date_str, len(message), modified_str if modified else '', msg_str)
+		print("S >> C [ %s >> %s ] [ %s ] [ %d ] %s %s\n" % (server_str, client_str, date_str, len(message), modified_str if modified else '', msg_str))
 
 	return message
 
@@ -412,14 +412,14 @@ def create_server(relay, cfg):
 		serv.bind((cfg.listen, lport))
 		serv.listen(2)
 
-		print '[+] Relay listening on %s %d -> %s:%d' % relay
+		print('[+] Relay listening on %s %d -> %s:%d' % relay)
 
 		while True:
 			if proto == 'tcp':
 				client, addr = serv.accept()
 				dest_str = '%s:%d' % (relay[2], relay[3])
 
-				print '[+] New client:', addr, "->", color(dest_str, 4)
+				print('[+] New client:', addr, "->", color(dest_str, 4))
 				thread = Thread(target=handle_tcp_client, args=(client, (rhost, rport), cfg))
 				thread.start()
 	else:
