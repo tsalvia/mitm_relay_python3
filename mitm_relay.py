@@ -312,6 +312,9 @@ def do_relay_tcp(client_sock, server_sock, cfg):
 
 		except socket.error as e:
 			print(color("[!] %s" % str(e)))
+			client_sock.close()
+			server_sock.close()
+			break
 
 def do_relay_udp(relay_sock, server, cfg):
 
